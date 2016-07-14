@@ -38,6 +38,7 @@ else
 endif
 
 CFLAGS += -Wall
+CFLAGS += -ggdb
 
 OUT_DIR := $(OUT_DIR)/OpenNI2/Drivers
 
