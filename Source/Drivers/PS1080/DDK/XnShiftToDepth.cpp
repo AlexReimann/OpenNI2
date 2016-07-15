@@ -24,6 +24,7 @@
 #include "XnShiftToDepth.h"
 #include <XnOS.h>
 #include "XnDDK.h"
+#include <iostream>
 
 //---------------------------------------------------------------------------
 // Code
@@ -33,6 +34,7 @@ XnStatus XnShiftToDepthInit(XnShiftToDepthTables* pShiftToDepth, const XnShiftTo
 	XN_VALIDATE_INPUT_PTR(pShiftToDepth);
 	XN_VALIDATE_INPUT_PTR(pConfig);
 
+	std::cout << "INIIIIIIIIIIIIIIIIIIIIIIT" << std::endl;
 	XN_VALIDATE_ALIGNED_CALLOC(pShiftToDepth->pShiftToDepthTable, OniDepthPixel, pConfig->nDeviceMaxShiftValue+1, XN_DEFAULT_MEM_ALIGN);
 	XN_VALIDATE_ALIGNED_CALLOC(pShiftToDepth->pDepthToShiftTable, XnUInt16, pConfig->nDeviceMaxDepthValue+1, XN_DEFAULT_MEM_ALIGN);
 	pShiftToDepth->bIsInitialized = TRUE;

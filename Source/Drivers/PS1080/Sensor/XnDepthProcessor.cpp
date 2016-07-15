@@ -25,10 +25,25 @@
 #include "XnSensor.h"
 #include <XnProfiling.h>
 #include <XnLog.h>
+#include <cmath>
+#include <bitset>
 
 //---------------------------------------------------------------------------
 // Defines
 //---------------------------------------------------------------------------
+
+const XnDepthProcessor::MasksAndShifts XnDepthProcessor::masksAndShifts11Bit[] =
+{
+		MasksAndShifts(0xFF, 0x0, 0xE000, -3, 0, 13),
+		MasksAndShifts(0x1F00, 0x0, 0xFC0000, 2, 0, 18),
+		MasksAndShifts(0x3, 0xFF00, 0x800000, -9, 7, 23),
+		MasksAndShifts(0x7F00, 0x0, 0xF00000, 4, 0, 20),
+
+		MasksAndShifts(0xF, 0x0, 0xFE00, -7, 0, 9),
+		MasksAndShifts(0x1, 0xFF00, 0xC00000, -10, 6, 23),
+		MasksAndShifts(0x3F00, 0x0, 0xF80000, 3, 0, 19),
+		MasksAndShifts(0x700, 0x0, 0xFF0000, 0, 0, 16),
+};
 
 //---------------------------------------------------------------------------
 // Code
@@ -49,12 +64,22 @@ XnDepthProcessor::~XnDepthProcessor()
 	{
 		xnOSFree(m_pShiftToDepthTable);
 	}
+
+#ifndef XN_NEON
+	if (m_b11BitToDepthAllocated)
+	{
+		for (int i = 0; i < numberOf11BitTables; ++i)
+		{
+			XN_ALIGNED_FREE_AND_NULL(m_p11BitToDepthTables[i]);
+		}
+	}
+#endif
 }
 
 XnStatus XnDepthProcessor::Init()
 {
 	XnStatus nRetVal = XN_STATUS_OK;
-	
+
 	// init base
 	nRetVal = XnFrameStreamProcessor::Init();
 	XN_IS_STATUS_OK(nRetVal);
@@ -83,7 +108,63 @@ XnStatus XnDepthProcessor::Init()
 		XN_LOG_WARNING_RETURN(XN_STATUS_ERROR, XN_MASK_SENSOR_PROTOCOL_DEPTH, "Unknown Depth output: %d", GetStream()->GetOutputFormat());
 	}
 
+#ifndef XN_NEON
+	return init11BitToDepthTables();
+#endif
+
 	return (XN_STATUS_OK);
+}
+
+XnStatus XnDepthProcessor::init11BitToDepthTables()
+{
+	XnUInt32 table_size = std::pow(2, (3 * 8));//XN_DEVICE_SENSOR_MAX_SHIFT_VALUE;//std::pow(2, 32);//sizeof(XnUInt32);
+
+	for (int table_index = 0; table_index < numberOf11BitTables; ++table_index)
+	{
+		XN_VALIDATE_ALIGNED_CALLOC(m_p11BitToDepthTables[table_index], OniDepthPixel, table_size, XN_DEFAULT_MEM_ALIGN);
+
+//		m_p11BitToDepthTables[table_index] = (OniDepthPixel*)xnOSMallocAligned(sizeof(OniDepthPixel) * table_size, 64);
+//		XN_VALIDATE_ALLOC_PTR(m_pShiftToDepthTable);
+		for (XnUInt32 i = 0; i < table_size; ++i)
+		{
+			m_p11BitToDepthTables[table_index][i] = i;
+		}
+	}
+	m_b11BitToDepthAllocated = TRUE;
+
+	for (int table_index = 0; table_index < numberOf11BitTables; ++table_index)
+	{
+		populate11BitToDepthTables(m_p11BitToDepthTables[table_index], table_size, masksAndShifts11Bit[table_index]);
+	}
+
+	return (XN_STATUS_OK);
+}
+
+void XnDepthProcessor::populate11BitToDepthTables(OniDepthPixel* table, XnUInt32 table_size, MasksAndShifts masksAndShifts)
+{
+	MasksAndShifts::Triple masks = masksAndShifts.masks;
+	MasksAndShifts::Triple right_shifts = masksAndShifts.right_shifts;
+
+	XnUInt32 mask_full = masks.front | masks.center | masks.back;
+	XnUInt32 masked_value;
+	XnUInt32 original_position;
+
+	for (XnUInt32 i = 0; i < table_size; ++i)
+	{
+		masked_value = i & mask_full;
+		if(masked_value != 0)
+		{
+			original_position = rightShift((masked_value & masks.front), right_shifts.front)
+					| rightShift((masked_value & masks.center), right_shifts.center)
+					| rightShift((masked_value & masks.back), right_shifts.back);
+
+			table[i] = m_pShiftToDepthTable[original_position];
+		}
+		else
+		{
+			table[i] = 0;
+		}
+	}
 }
 
 void XnDepthProcessor::OnStartOfFrame(const XnSensorProtocolResponseHeader* pHeader)
@@ -94,8 +175,8 @@ void XnDepthProcessor::OnStartOfFrame(const XnSensorProtocolResponseHeader* pHea
 	m_nExpectedFrameSize = CalculateExpectedSize();
 
 	m_applyRegistrationOnEnd = (
-		(GetStream()->GetOutputFormat() == ONI_PIXEL_FORMAT_DEPTH_1_MM || GetStream()->GetOutputFormat() == ONI_PIXEL_FORMAT_DEPTH_100_UM) && 
-		GetStream()->m_DepthRegistration.GetValue() == TRUE && 
+		(GetStream()->GetOutputFormat() == ONI_PIXEL_FORMAT_DEPTH_1_MM || GetStream()->GetOutputFormat() == ONI_PIXEL_FORMAT_DEPTH_100_UM) &&
+		GetStream()->m_DepthRegistration.GetValue() == TRUE &&
 		GetStream()->m_FirmwareRegistration.GetValue() == FALSE);
 
 	if (m_pDevicePrivateData->FWInfo.nFWVer >= XN_SENSOR_FW_VER_5_1 && pHeader->nTimeStamp != 0)
@@ -153,7 +234,7 @@ void XnDepthProcessor::OnEndOfFrame(const XnSensorProtocolResponseHeader* pHeade
 	pFrame->videoMode.resolutionX = GetStream()->GetXRes();
 	pFrame->videoMode.resolutionY = GetStream()->GetYRes();
 	pFrame->videoMode.fps = GetStream()->GetFPS();
-	
+
 	if (GetStream()->m_FirmwareCropMode.GetValue() != XN_FIRMWARE_CROPPING_MODE_DISABLED)
 	{
 		pFrame->width = (int)GetStream()->m_FirmwareCropSizeX.GetValue();

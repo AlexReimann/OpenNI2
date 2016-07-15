@@ -20,6 +20,7 @@
 *****************************************************************************/
 #include "XnShiftToDepthStreamHelper.h"
 #include <XnCore.h>
+#include <iostream>
 
 XnShiftToDepthStreamHelper::XnShiftToDepthStreamHelper() :
 	m_ShiftToDepthTable(XN_STREAM_PROPERTY_S2D_TABLE, "S2D", NULL, 0, NULL),
@@ -43,7 +44,7 @@ XnStatus XnShiftToDepthStreamHelper::Init(XnDeviceModule* pModule)
 
 	XN_VALIDATE_INPUT_PTR(pModule);
 	m_pModule = pModule;
-	
+
 	// old depth streams did not have S2D tables as actual properties. Add these properties
 	XnBool bDoesExist = FALSE;
 	nRetVal = m_pModule->DoesPropertyExist(XN_STREAM_PROPERTY_S2D_TABLE, &bDoesExist);
@@ -62,10 +63,11 @@ XnStatus XnShiftToDepthStreamHelper::Init(XnDeviceModule* pModule)
 	}
 	else
 	{
+		std::cout << "BLAAAAAAAAAAAAAAAAAAAAAAAAAAAA" << std::endl;
 		m_ShiftToDepthTables.pShiftToDepthTable = (OniDepthPixel*)m_ShiftToDepthTable.GetValue().data;
 		m_ShiftToDepthTables.pDepthToShiftTable = (XnUInt16*)m_DepthToShiftTable.GetValue().data;
 	}
-	
+
 	return (XN_STATUS_OK);
 }
 
@@ -80,7 +82,7 @@ XnStatus XnShiftToDepthStreamHelper::InitShiftToDepth()
 	XnStatus nRetVal = XN_STATUS_OK;
 
 	// register to any shift-to-depth property (so tables can be updated if needed)
-	XnUInt32 propIds[] = 
+	XnUInt32 propIds[] =
 	{
 		XN_STREAM_PROPERTY_MIN_DEPTH,
 		XN_STREAM_PROPERTY_MAX_DEPTH,
@@ -145,7 +147,7 @@ XnStatus XnShiftToDepthStreamHelper::InitShiftToDepth()
 XnStatus XnShiftToDepthStreamHelper::GetShiftToDepthConfig(XnShiftToDepthConfig& Config)
 {
 	XnStatus nRetVal = XN_STATUS_OK;
-	
+
 	XnUInt64 nTemp;
 	XnDouble dTemp;
 
@@ -226,13 +228,13 @@ XnStatus XnShiftToDepthStreamHelper::GetShiftToDepthConfig(XnShiftToDepthConfig&
 XnStatus XnShiftToDepthStreamHelper::RaiseChangeEvents()
 {
 	XnStatus nRetVal = XN_STATUS_OK;
-	
+
 	nRetVal = m_ShiftToDepthTable.UnsafeUpdateValue(XnGeneralBufferPack(m_ShiftToDepthTables.pShiftToDepthTable, m_ShiftToDepthTables.nShiftsCount * sizeof(OniDepthPixel)));
 	XN_IS_STATUS_OK(nRetVal);
 
 	nRetVal = m_DepthToShiftTable.UnsafeUpdateValue(XnGeneralBufferPack(m_ShiftToDepthTables.pDepthToShiftTable, m_ShiftToDepthTables.nDepthsCount * sizeof(XnUInt16)));
 	XN_IS_STATUS_OK(nRetVal);
-	
+
 	return (XN_STATUS_OK);
 }
 
@@ -304,13 +306,13 @@ XnStatus XnShiftToDepthStreamHelper::GetDepthToShiftTableImpl(const OniGeneralBu
 XnStatus XN_CALLBACK_TYPE XnShiftToDepthStreamHelper::GetShiftToDepthTableCallback(const XnActualGeneralProperty* /*pSender*/, const OniGeneralBuffer& gbValue, void* pCookie)
 {
 	XnShiftToDepthStreamHelper* pStream = (XnShiftToDepthStreamHelper*)pCookie;
-	return pStream->GetShiftToDepthTableImpl(gbValue);	
+	return pStream->GetShiftToDepthTableImpl(gbValue);
 }
 
 XnStatus XN_CALLBACK_TYPE XnShiftToDepthStreamHelper::GetDepthToShiftTableCallback(const XnActualGeneralProperty* /*pSender*/, const OniGeneralBuffer& gbValue, void* pCookie)
 {
 	XnShiftToDepthStreamHelper* pStream = (XnShiftToDepthStreamHelper*)pCookie;
-	return pStream->GetDepthToShiftTableImpl(gbValue);	
+	return pStream->GetDepthToShiftTableImpl(gbValue);
 }
 
 XnStatus XN_CALLBACK_TYPE XnShiftToDepthStreamHelper::ShiftToDepthPropertyValueChangedCallback(const XnProperty* /*pSender*/, void* pCookie)

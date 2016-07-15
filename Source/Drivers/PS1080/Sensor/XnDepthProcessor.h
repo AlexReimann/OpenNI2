@@ -26,14 +26,15 @@
 //---------------------------------------------------------------------------
 #include "XnFrameStreamProcessor.h"
 #include "XnSensorDepthStream.h"
+#include <iostream>
 
 //---------------------------------------------------------------------------
 // Compilation Checks
 //---------------------------------------------------------------------------
 
 // Optimization: in order to save branches in the code itself, we create a shift-to-depth
-// map which will actually translate shift-to-shift. This optimization relies on the 
-// fact that both shifts and depths are 16-bit long. If this is not the case, 
+// map which will actually translate shift-to-shift. This optimization relies on the
+// fact that both shifts and depths are 16-bit long. If this is not the case,
 // this optimization should be re-written.
 // Then, any processor can always go through this LUT, no matter what the output format is.
 #if (OniDepthPixel != XnUInt16)
@@ -52,6 +53,33 @@ public:
 	XnStatus Init();
 
 protected:
+	class MasksAndShifts
+	{
+		public:
+			MasksAndShifts(XnInt32 mask_front, XnInt32 mask_center,
+					XnInt32 mask_back, XnInt32 shift_front, XnInt32 shift_center,
+					XnInt32 shift_back)
+			{
+				masks.front = mask_front;
+				masks.center = mask_center;
+				masks.back = mask_back;
+
+				right_shifts.front = shift_front;
+				right_shifts.center = shift_center;
+				right_shifts.back = shift_back;
+			}
+
+			struct Triple
+			{
+				XnInt32 front;
+				XnInt32 center;
+				XnInt32 back;
+			};
+
+			Triple masks;
+			Triple right_shifts;
+	};
+
 	//---------------------------------------------------------------------------
 	// Overridden Functions
 	//---------------------------------------------------------------------------
@@ -72,12 +100,30 @@ protected:
 		return m_pShiftToDepthTable[nShift];
 	}
 
+	inline OniDepthPixel GetOutputFrom11Bit(XnUInt32 nShift, XnUInt32 index)
+	{
+		return m_p11BitToDepthTables[index][nShift];
+	}
+
 	inline XnUInt32 GetExpectedSize()
 	{
 		return m_nExpectedFrameSize;
 	}
 
 private:
+	XnStatus init11BitToDepthTables();
+	void populate11BitToDepthTables(OniDepthPixel* table, XnUInt32 table_size, MasksAndShifts masksAndShifts);
+
+	XnUInt32 rightShift(XnUInt32 value, XnInt32 shift)
+	{
+		if(shift > 0)
+		{
+			return value >> shift;
+		}
+
+		return value << -shift;
+	}
+
 	void PadPixels(XnUInt32 nPixels);
 	XnUInt32 CalculateExpectedSize();
 
@@ -86,6 +132,10 @@ private:
 	XnUInt32 m_nExpectedFrameSize;
 	XnBool m_bShiftToDepthAllocated;
 	OniDepthPixel* m_pShiftToDepthTable;
+	static const int numberOf11BitTables = 8;
+	static const MasksAndShifts masksAndShifts11Bit[];
+	OniDepthPixel* m_p11BitToDepthTables[numberOf11BitTables];
+	XnBool m_b11BitToDepthAllocated;
 	OniDepthPixel m_noDepthValue;
 };
 

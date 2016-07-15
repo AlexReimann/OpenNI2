@@ -23,6 +23,8 @@
 //---------------------------------------------------------------------------
 #include "XnPacked11DepthProcessor.h"
 #include <XnProfiling.h>
+#include <bitset>
+#include <iostream>
 #ifdef XN_NEON
 #include <arm_neon.h>
 #endif
@@ -45,7 +47,7 @@
 #define XN_CREATE_MASK(count, offset)	(XN_ON_BITS(count) << offset)
 
 /* Takes the <count> bits in offset <offset> from <source>.
-*  For example: 
+*  For example:
 *  If we want 3 bits located in offset 2 from 0xF4:
 *  11110100
 *     ---
@@ -96,8 +98,8 @@ XnStatus XnPacked11DepthProcessor::Unpack11to16(const XnUInt8* pcInput, const Xn
 
 	XnUInt16* pnOutput = (XnUInt16*)pWriteBuffer->GetUnsafeWritePointer();
 
-	XnUInt16 a0,a1,a2,a3,a4,a5,a6,a7;
 #ifdef XN_NEON
+	XnUInt16 a0,a1,a2,a3,a4,a5,a6,a7;
 	XnUInt16 depth[8];
 	uint16x8_t Q0;
 #endif
@@ -111,6 +113,8 @@ XnStatus XnPacked11DepthProcessor::Unpack11to16(const XnUInt8* pcInput, const Xn
 		//			---,---,-----,---,---,-----,---,---
 		// output:	  0,  1,    2,  3,  4,    5,  6,  7
 
+
+#ifdef XN_NEON
 		a0 = (XN_TAKE_BITS(pcInput[0],8,0) << 3) | XN_TAKE_BITS(pcInput[1],3,5);
 		a1 = (XN_TAKE_BITS(pcInput[1],5,0) << 6) | XN_TAKE_BITS(pcInput[2],6,2);
 		a2 = (XN_TAKE_BITS(pcInput[2],2,0) << 9) | (XN_TAKE_BITS(pcInput[3],8,0) << 1) | XN_TAKE_BITS(pcInput[4],1,7);
@@ -120,8 +124,6 @@ XnStatus XnPacked11DepthProcessor::Unpack11to16(const XnUInt8* pcInput, const Xn
 		a6 = (XN_TAKE_BITS(pcInput[8],6,0) << 5) | XN_TAKE_BITS(pcInput[9],5,3);
 		a7 = (XN_TAKE_BITS(pcInput[9],3,0) << 8) | XN_TAKE_BITS(pcInput[10],8,0);
 
-
-#ifdef XN_NEON
 		depth[0] = GetOutput(a0);
 		depth[1] = GetOutput(a1);
 		depth[2] = GetOutput(a2);
@@ -135,7 +137,37 @@ XnStatus XnPacked11DepthProcessor::Unpack11to16(const XnUInt8* pcInput, const Xn
 		Q0 = vld1q_u16(depth);
 		// Store
 		vst1q_u16(pnOutput, Q0);
-#else
+#elif true
+		XnUInt32 cast_int_0, cast_int_1, cast_int_2, cast_int_3;
+
+		cast_int_0 = (((XnUInt32*)pcInput)[0]) & 0x00FFFFFF;
+		cast_int_1 = ((XnUInt32*)(pcInput + 2))[0];
+		cast_int_2 = ((XnUInt32*)(pcInput + 5))[0];
+		cast_int_3 = ((XnUInt32*)(pcInput + 7))[0];
+
+		pnOutput[0] = GetOutputFrom11Bit(cast_int_0, 0);
+		pnOutput[1] = GetOutputFrom11Bit(cast_int_0, 1);
+
+		pnOutput[2] = GetOutputFrom11Bit(cast_int_1 & 0x00FFFFFF, 2);
+		pnOutput[3] = GetOutputFrom11Bit(cast_int_1 >> 8, 3);
+
+		pnOutput[4] = GetOutputFrom11Bit(cast_int_2 & 0x00FFFFFF, 4);
+		pnOutput[5] = GetOutputFrom11Bit(cast_int_2 >> 8, 5);
+
+		pnOutput[6] = GetOutputFrom11Bit(cast_int_3 & 0x00FFFFFF, 6);
+		pnOutput[7] = GetOutputFrom11Bit(cast_int_3 >> 8, 7);
+#elif true
+		XnUInt16 a0,a1,a2,a3,a4,a5,a6,a7;
+
+		a0 = (XN_TAKE_BITS(pcInput[0],8,0) << 3) | XN_TAKE_BITS(pcInput[1],3,5);
+		a1 = (XN_TAKE_BITS(pcInput[1],5,0) << 6) | XN_TAKE_BITS(pcInput[2],6,2);
+		a2 = (XN_TAKE_BITS(pcInput[2],2,0) << 9) | (XN_TAKE_BITS(pcInput[3],8,0) << 1) | XN_TAKE_BITS(pcInput[4],1,7);
+		a3 = (XN_TAKE_BITS(pcInput[4],7,0) << 4) | XN_TAKE_BITS(pcInput[5],4,4);
+		a4 = (XN_TAKE_BITS(pcInput[5],4,0) << 7) | XN_TAKE_BITS(pcInput[6],7,1);
+		a5 = (XN_TAKE_BITS(pcInput[6],1,0) << 10) | (XN_TAKE_BITS(pcInput[7],8,0) << 2) | XN_TAKE_BITS(pcInput[8],2,6);
+		a6 = (XN_TAKE_BITS(pcInput[8],6,0) << 5) | XN_TAKE_BITS(pcInput[9],5,3);
+		a7 = (XN_TAKE_BITS(pcInput[9],3,0) << 8) | XN_TAKE_BITS(pcInput[10],8,0);
+
 		pnOutput[0] = GetOutput(a0);
 		pnOutput[1] = GetOutput(a1);
 		pnOutput[2] = GetOutput(a2);
